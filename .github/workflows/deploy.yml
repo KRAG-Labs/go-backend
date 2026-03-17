@@ -25,14 +25,22 @@ jobs:
           username: kenura
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # 1. Create and enter the directory
             mkdir -p /opt/deployments/go-backend
             cd /opt/deployments/go-backend
 
-            if [ ! -d ".git" ]; then
+            # 2. Fish-compatible logic: Check if repo exists
+            if not test -d .git
               git clone https://github.com/KRAG-Labs/go-backend.git .
             else
-              git pull origin main
-            fi
+              # Force the local folder to match GitHub exactly
+              git fetch --all
+              git reset --hard origin/main
+            end
 
-            docker-compose up -d --build
+            # 3. Build and Run via Docker
+            # Note: CachyOS uses the modern 'docker compose' (no hyphen)
+            docker compose up -d --build
+            
+            # 4. Cleanup old images
             docker image prune -f
