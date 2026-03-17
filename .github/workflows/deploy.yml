@@ -1,0 +1,38 @@
+name: Deploy Go Backend
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Execute Remote Commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.TAILSCALE_IP }}
+          username: your_pc_username  # <--- CHANGE THIS to your Linux username (type 'whoami')
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /opt/deployments/go-backend
+            cd /opt/deployments/go-backend
+
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/KRAG-Labs/go-backend.git .
+            else
+              git pull origin main
+            fi
+
+            docker-compose up -d --build
+            docker image prune -f
