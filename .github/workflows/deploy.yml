@@ -22,7 +22,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.TAILSCALE_IP }}
-          username: your_pc_username  # <--- CHANGE THIS to your Linux username (type 'whoami')
+          username: kenura
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /opt/deployments/go-backend
