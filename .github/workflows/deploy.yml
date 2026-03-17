@@ -24,23 +24,21 @@ jobs:
           host: ${{ secrets.TAILSCALE_IP }}
           username: kenura
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # 1. Increase timeout to 30 minutes for the first big download
+          command_timeout: 30m 
           script: |
-            # 1. Create and enter the directory
             mkdir -p /opt/deployments/go-backend
             cd /opt/deployments/go-backend
 
-            # 2. Fish-compatible logic: Check if repo exists
             if not test -d .git
               git clone https://github.com/KRAG-Labs/go-backend.git .
             else
-              # Force the local folder to match GitHub exactly
               git fetch --all
               git reset --hard origin/main
             end
 
-            # 3. Build and Run via Docker
-            # Note: CachyOS uses the modern 'docker compose' (no hyphen)
+            # 2. Use --quiet to stop the thousands of download lines
+            docker compose pull --quiet
             docker compose up -d --build
             
-            # 4. Cleanup old images
             docker image prune -f
