@@ -5,52 +5,71 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var (
-	ctx      = context.Background()
-	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true }, // Allow all for testing
-	}
-)
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// Data structure for MongoDB
+type WSMessage struct {
+	Content   string    `bson:"content"`
+	Timestamp time.Time `bson:"timestamp"`
+}
 
 func main() {
-	// Connect to Redis (Notice the hostname is 'redis' matching docker-compose)
-	rdb := redis.NewClient(&redis.Options{
-		Addr: "redis:6379",
-	})
+	// 1. Connect to MongoDB (service name is 'mongo' from docker-compose)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://mongo:27017"))
+	if err != nil {
+		log.Fatal("Mongo Connection Error:", err)
+	}
+
+	collection := client.Database("krag_db").Collection("messages")
+	fmt.Println("Connected to MongoDB successfully")
+
+	// 2. WebSocket Handler
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Println(err)
+			log.Println("Upgrade error:", err)
 			return
 		}
 		defer conn.Close()
 
 		for {
-			// Read message
+			// Read message from browser/client
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				break
 			}
 
-			// 1. Save to Redis
-			err = rdb.Set(ctx, "last_msg", msg, 0).Err()
+			// 3. Save to MongoDB
+			newEntry := WSMessage{
+				Content:   string(msg),
+				Timestamp: time.Now(),
+			}
+			_, err = collection.InsertOne(context.TODO(), newEntry)
 			if err != nil {
-				log.Println("Redis Error:", err)
+				log.Println("Mongo Insert Error:", err)
+				continue
 			}
 
-			// 2. Echo back
-			response := fmt.Sprintf("Saved to Redis: %s", string(msg))
+			// 4. Instant Feedback: Get the latest message count to show it worked
+			count, _ := collection.CountDocuments(context.TODO(), bson.D{})
+			response := fmt.Sprintf("Saved! Total messages in DB: %d", count)
 			conn.WriteMessage(websocket.TextMessage, []byte(response))
 		}
 	})
 
-	port := ":8080"
-	fmt.Println("Server starting on port", port)
-	log.Fatal(http.ListenAndServe("0.0.0.0"+port, nil))
+	fmt.Println("Server starting on 0.0.0.0:8080")
+	log.Fatal(http.ListenAndServe("0.0.0.0:8080", nil))
 }
